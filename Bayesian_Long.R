@@ -153,19 +153,19 @@ logit_mod1$WAIC
 
 
 
-#---------- Question 2
+#---------- Question 2: Random intercept
 #===============================================================================
 
 # Initial value for GLMM
-initial_re <- list(beta = rep(0, 12), mu0 = 0, tau0 = 1, b0 = rnorm(nrow(df)))
+initial_int <- list(beta = rep(0, 12), mu0 = 0, tau0 = 1, b0 = rnorm(nrow(df)))
 
 # specify MCMC details
-params_re <- c("beta", "mu0", "tau0")
+params_int <- c("beta", "mu0", "tau0")
 
 # Vague prior
 #-------------------------------------------------------------------------------
 # Write nimble model, logistic regression + random intercept
-logit_RE_code <- nimbleCode(
+logit_int_code <- nimbleCode(
   {
     # Data model
     for (i in 1:N) {
@@ -185,7 +185,7 @@ logit_RE_code <- nimbleCode(
   })
 
 
-logit_RE <- nimbleMCMC(code = logit_RE_code,
+logit_int <- nimbleMCMC(code = logit_int_code,
                          data = model_data,
                          constants = model_constant,
                          inits = initial_re,
@@ -199,20 +199,79 @@ logit_RE <- nimbleMCMC(code = logit_RE_code,
 
 # Convert  into mcmc.list 
 
-logit_RE_mcmc <- as.mcmc.list(logit_RE$samples)
+logit_int_mcmc <- as.mcmc.list(logit_int$samples)
 
-gelman.diag(logit_RE_mcmc)
-gelman.plot(logit_RE_mcmc)
+gelman.diag(logit_int_mcmc)
+gelman.plot(logit_int_mcmc)
 
 # Produce general summary of obtained MCMC sampling
 
-plot(logit_RE_mcmc)
-summary(logit_RE_mcmc)
-densplot(logit_RE_mcmc)
+plot(logit_int_mcmc)
+summary(logit_int_mcmc)
+densplot(logit_int_mcmc)
 
 
 
+#---------- Question 2: Random slope
+#===============================================================================
 
+# Initial value for GLMM
+initial_sl <- list(beta = rep(0, 12), mu0 = 0, tau0 = 1, b0 = rnorm(nrow(df)),
+                    mu1 = 0, tau1 = 1, b1 = rnorm(nrow(df)))
+
+# specify MCMC details
+params_sl <- c("beta", "mu0", "tau0", "mu1", "tau1")
+
+# Vague prior
+#-------------------------------------------------------------------------------
+# Write nimble model, logistic regression + random intercept + random slope in year
+logit_sl_code <- nimbleCode(
+  {
+    # Data model
+    for (i in 1:N) {
+      logit(p[i]) <- beta[1] + beta[2]*female[i] + beta[3]*year[i] + beta[4]*age[i] + 
+        beta[5]*hsat[i] + beta[6]*handper[i] + beta[7]*hhninc[i] + beta[8]*hhkids[i] +
+        beta[9]*educ[i] + beta[10]*married[i] + beta[11]*docvis[i] + beta[12]*hospvis[i] +
+        b0[i] + b1[i]*year[i]
+      working[i] ~ dbern(p[i])
+      b0[i] ~ dnorm(mu0, var = tau0)
+      b1[i] ~ dnorm(mu1, var = tau1)
+    }
+    # Prior
+    for (i in 1:12){
+      beta[i]~ dnorm(0.0, 1.0E-4)
+    }
+    mu0 ~ dnorm(0, 1.0E-4)
+    tau0 ~ dinvgamma(2, 1)
+    mu1 ~ dnorm(0, 1.0E-4)
+    tau1 ~ dinvgamma(2, 1)
+  })
+
+
+logit_sl <- nimbleMCMC(code = logit_sl_code,
+                        data = model_data,
+                        constants = model_constant,
+                        inits = initial_sl,
+                        monitors = params_sl,
+                        niter = 5000,
+                        nburnin = 1000,
+                        nchains = 2,
+                        thin = 1,
+                        samplesAsCodaMCMC = TRUE,
+                        WAIC = TRUE)
+
+# Convert  into mcmc.list 
+
+logit_sl_mcmc <- as.mcmc.list(logit_sl$samples)
+
+gelman.diag(logit_sl_mcmc)
+gelman.plot(logit_sl_mcmc)
+
+# Produce general summary of obtained MCMC sampling
+
+plot(logit_sl_mcmc)
+summary(logit_sl_mcmc)
+densplot(logit_sl_mcmc)
 
 
 
