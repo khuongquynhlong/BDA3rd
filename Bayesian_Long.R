@@ -92,7 +92,7 @@ model_data <- list(working     = df$working,
 model_constant <- list(N = nrow(df))
 
 # Initial value
-initial_values <- list(beta = rep(0, 13))
+initial_values <- list(beta = rep(0, 12))
 
 # specify MCMC details
 params <- c("beta")
@@ -106,12 +106,11 @@ logit_mod1_code <- nimbleCode(
     for (i in 1:N) {
       logit(p[i]) <- beta[1] + beta[2]*female[i] + beta[3]*year[i] + beta[4]*age[i] + 
         beta[5]*hsat[i] + beta[6]*handper[i] + beta[7]*hhninc[i] + beta[8]*hhkids[i] +
-        beta[9]*educ[i] + beta[10]*married[i] + beta[11]*docvis[i] + beta[12]*hospvis[i] +
-        beta[13]*public[i]
+        beta[9]*educ[i] + beta[10]*married[i] + beta[11]*docvis[i] + beta[12]*hospvis[i]
       working[i] ~ dbern(p[i])
     }
     # Prior
-    for (i in 1:13){
+    for (i in 1:12){
       beta[i]~ dnorm(0.0,1.0E-4)
     }
 })
@@ -154,12 +153,62 @@ logit_mod1$WAIC
 
 
 
+#---------- Question 2
+#===============================================================================
+
+# Initial value for GLMM
+initial_re <- list(beta = rep(0, 12), mu0 = 0, tau0 = 1, b0 = rnorm(nrow(df)))
+
+# specify MCMC details
+params_re <- c("beta", "mu0", "tau0")
+
+# Vague prior
+#-------------------------------------------------------------------------------
+# Write nimble model, logistic regression + random intercept
+logit_RE_code <- nimbleCode(
+  {
+    # Data model
+    for (i in 1:N) {
+      logit(p[i]) <- beta[1] + beta[2]*female[i] + beta[3]*year[i] + beta[4]*age[i] + 
+        beta[5]*hsat[i] + beta[6]*handper[i] + beta[7]*hhninc[i] + beta[8]*hhkids[i] +
+        beta[9]*educ[i] + beta[10]*married[i] + beta[11]*docvis[i] + beta[12]*hospvis[i] +
+        b0[i]
+      working[i] ~ dbern(p[i])
+      b0[i] ~ dnorm(mu0, var = tau0)
+    }
+    # Prior
+    for (i in 1:12){
+      beta[i]~ dnorm(0.0, 1.0E-4)
+    }
+    mu0 ~ dnorm(0, 1.0E-4)
+    tau0 ~ dinvgamma(2, 1)
+  })
 
 
+logit_RE <- nimbleMCMC(code = logit_RE_code,
+                         data = model_data,
+                         constants = model_constant,
+                         inits = initial_re,
+                         monitors = params_re,
+                         niter = 5000,
+                         nburnin = 1000,
+                         nchains = 2,
+                         thin = 1,
+                         samplesAsCodaMCMC = TRUE,
+                         WAIC = TRUE)
 
+# Convert  into mcmc.list 
 
+logit_RE_mcmc <- as.mcmc.list(logit_RE$samples)
 
+gelman.diag(logit_RE_mcmc)
+gelman.plot(logit_RE_mcmc)
 
+# Produce general summary of obtained MCMC sampling
+
+plot(logit_RE_mcmc)
+summary(logit_RE_mcmc)
+densplot(logit_RE_mcmc)
 
 
 
