@@ -2,6 +2,7 @@ library(nimble)
 library(coda)
 library(tidybayes)
 library(tidyverse)
+library(magrittr)
 
 #---------- Read data
 
@@ -111,7 +112,7 @@ logit_mod1_code <- nimbleCode(
     }
     # Prior
     for (i in 1:12){
-      beta[i]~ dnorm(0.0,1.0E-4)
+      beta[i] ~ dnorm(0.0,1.0E-4)
     }
 })
 
@@ -155,49 +156,78 @@ logit_mod1$WAIC
 
 #---------- Question 2: Random intercept
 #===============================================================================
+# Recreate id
+id_df <- cbind(id = unique(df$id), id_re = 1:length(unique(df$id))) %>% as.data.frame()
+df %<>% left_join(id_df, by = "id")
+
+unique(df$id) %>% length()
+
+#---------- Random intercept
+
+# Set up the data given
+model_data <- list(working     = df$working,
+                   female      = df$female,
+                   year        = std(df$year),
+                   age         = std(df$age),
+                   hsat        = std(df$hsat),
+                   handdum     = df$handdum,
+                   handper     = std(df$handper),
+                   hhninc      = std(df$hhninc),
+                   hhkids      = df$hhkids,
+                   educ        = std(df$educ),
+                   married     = df$married,
+                   docvis      = std(df$docvis),
+                   hospvis     = std(df$hospvis),
+                   public      = df$public)
+
+
+
+model_constant_re <- list(C     = 100,
+                          nc    = rep(7, 100),
+                          cumnc = cumsum(rep(7, 100)) - 7)
 
 # Initial value for GLMM
-initial_int <- list(beta = rep(0, 12), mu0 = 0, tau0 = 1, b0 = rnorm(nrow(df)))
+initial_int <- list(beta = rep(0, 3), mu0 = 0, tau0 = 1, 
+                    b0 = rep(0, 100))
 
 # specify MCMC details
 params_int <- c("beta", "mu0", "tau0")
 
-# Vague prior
-#-------------------------------------------------------------------------------
-# Write nimble model, logistic regression + random intercept
+
+# Nimble code for model
+
 logit_int_code <- nimbleCode(
-  {
-    # Data model
-    for (i in 1:N) {
-      logit(p[i]) <- beta[1] + beta[2]*female[i] + beta[3]*year[i] + beta[4]*age[i] + 
-        beta[5]*hsat[i] + beta[6]*handper[i] + beta[7]*hhninc[i] + beta[8]*hhkids[i] +
-        beta[9]*educ[i] + beta[10]*married[i] + beta[11]*docvis[i] + beta[12]*hospvis[i] +
-        b0[i]
-      working[i] ~ dbern(p[i])
-      b0[i] ~ dnorm(mu0, var = tau0)
-    }
-    # Prior
-    for (i in 1:12){
-      beta[i]~ dnorm(0.0, 1.0E-4)
-    }
-    mu0 ~ dnorm(0, 1.0E-4)
-    tau0 ~ dinvgamma(2, 1)
-  })
+{
+for (ic in 1:C) {
+  for (j in 1:nc[ic]) {
+    logit(p[cumnc[ic]+ j]) <- beta[1] + beta[2]*age[cumnc[ic]+ j] + 
+      beta[3]*female[ic] + b0[ic]
+    working[cumnc[ic]+ j] ~ dbern(p[cumnc[ic]+ j])
+  }
+  b0[ic] ~ dnorm(mu0, tau0)
+}
+  # Prior
+  for (i in 1:3){
+    beta[i]~ dnorm(0.0, 1.0E-4)
+  }
+  mu0 ~ dnorm(0, 1.0E-4)
+  tau0 ~ dgamma(0.001, 0.001)
+})
 
 
 logit_int <- nimbleMCMC(code = logit_int_code,
-                         data = model_data,
-                         constants = model_constant,
-                         inits = initial_re,
-                         monitors = params_re,
-                         niter = 5000,
-                         nburnin = 1000,
-                         nchains = 2,
-                         thin = 1,
-                         samplesAsCodaMCMC = TRUE,
-                         WAIC = TRUE)
+                        data = model_data,
+                        constants = model_constant_re,
+                        inits = initial_int,
+                        monitors = params_int,
+                        niter = 20000,
+                        nburnin = 5000,
+                        nchains = 4,
+                        thin = 2,
+                        samplesAsCodaMCMC = TRUE,
+                        WAIC = TRUE)
 
-# Convert  into mcmc.list 
+# Convert into mcmc.list 
 
 logit_int_mcmc <- as.mcmc.list(logit_int$samples)
 
@@ -212,66 +242,31 @@ densplot(logit_int_mcmc)
 
 
 
-#---------- Question 2: Random slope
-#===============================================================================
-
-# Initial value for GLMM
-initial_sl <- list(beta = rep(0, 12), mu0 = 0, tau0 = 1, b0 = rnorm(nrow(df)),
-                    mu1 = 0, tau1 = 1, b1 = rnorm(nrow(df)))
-
-# specify MCMC details
-params_sl <- c("beta", "mu0", "tau0", "mu1", "tau1")
-
-# Vague prior
-#-------------------------------------------------------------------------------
-# Write nimble model, logistic regression + random intercept + random slope in year
-logit_sl_code <- nimbleCode(
-  {
-    # Data model
-    for (i in 1:N) {
-      logit(p[i]) <- beta[1] + beta[2]*female[i] + beta[3]*year[i] + beta[4]*age[i] + 
-        beta[5]*hsat[i] + beta[6]*handper[i] + beta[7]*hhninc[i] + beta[8]*hhkids[i] +
-        beta[9]*educ[i] + beta[10]*married[i] + beta[11]*docvis[i] + beta[12]*hospvis[i] +
-        b0[i] + b1[i]*year[i]
-      working[i] ~ dbern(p[i])
-      b0[i] ~ dnorm(mu0, var = tau0)
-      b1[i] ~ dnorm(mu1, var = tau1)
-    }
-    # Prior
-    for (i in 1:12){
-      beta[i]~ dnorm(0.0, 1.0E-4)
-    }
-    mu0 ~ dnorm(0, 1.0E-4)
-    tau0 ~ dinvgamma(2, 1)
-    mu1 ~ dnorm(0, 1.0E-4)
-    tau1 ~ dinvgamma(2, 1)
-  })
 
 
-logit_sl <- nimbleMCMC(code = logit_sl_code,
-                        data = model_data,
-                        constants = model_constant,
-                        inits = initial_sl,
-                        monitors = params_sl,
-                        niter = 5000,
-                        nburnin = 1000,
-                        nchains = 2,
-                        thin = 1,
-                        samplesAsCodaMCMC = TRUE,
-                        WAIC = TRUE)
 
-# Convert  into mcmc.list 
 
-logit_sl_mcmc <- as.mcmc.list(logit_sl$samples)
 
-gelman.diag(logit_sl_mcmc)
-gelman.plot(logit_sl_mcmc)
 
-# Produce general summary of obtained MCMC sampling
 
-plot(logit_sl_mcmc)
-summary(logit_sl_mcmc)
-densplot(logit_sl_mcmc)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
