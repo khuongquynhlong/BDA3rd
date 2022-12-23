@@ -159,6 +159,9 @@ logit_mod1$WAIC
 # Recreate id
 id_df <- cbind(id = unique(df$id), id_re = 1:length(unique(df$id))) %>% as.data.frame()
 df %<>% left_join(id_df, by = "id")
+# df %<>% mutate(group = cumsum(c(1, diff(id_re)>0)))
+
+
 
 unique(df$id) %>% length()
 
@@ -186,12 +189,11 @@ model_constant_re <- list(C     = 100,
                           nc    = rep(7, 100),
                           cumnc = cumsum(rep(7, 100)) - 7)
 
-# Initial value for GLMM
-initial_int <- list(beta = rep(0, 3), mu0 = 0, tau0 = 1, 
-                    b0 = rep(0, 100))
+# Initial value for random intercept
+initial_int <- list(beta = rep(0, 12), tau0 = 1, b0 = rep(0, 100))
 
 # specify MCMC details
-params_int <- c("beta", "mu0", "tau0")
+params_int <- c("beta", "tau0")
 
 
 # Nimble code for model
@@ -200,17 +202,20 @@ logit_int_code <- nimbleCode(
 {
 for (ic in 1:C) {
   for (j in 1:nc[ic]) {
-    logit(p[cumnc[ic]+ j]) <- beta[1] + beta[2]*age[cumnc[ic]+ j] + 
-      beta[3]*female[ic] + b0[ic]
     working[cumnc[ic]+ j] ~ dbern(p[cumnc[ic]+ j])
+    logit(p[cumnc[ic]+ j]) <- beta[1] + beta[2]*female[ic] + beta[3]*year[cumnc[ic]+ j] + 
+      beta[4]*age[cumnc[ic]+ j] + beta[5]*hsat[cumnc[ic]+ j] + 
+      beta[6]*handper[cumnc[ic]+ j] + beta[7]*hhninc[cumnc[ic]+ j] + 
+      beta[8]*hhkids[cumnc[ic]+ j] + beta[9]*educ[cumnc[ic]+ j] + 
+      beta[10]*married[cumnc[ic]+ j] + beta[11]*docvis[cumnc[ic]+ j] + 
+      beta[12]*hospvis[cumnc[ic]+ j] + b0[ic]
   }
-  b0[ic] ~ dnorm(mu0, tau0)
+  b0[ic] ~ dnorm(0, tau0)
 }
   # Prior
-  for (i in 1:3){
-    beta[i]~ dnorm(0.0, 1.0E-4)
+  for (i in 1:12){
+    beta[i]~ dnorm(0.0, 1.0E-6)
   }
-  mu0 ~ dnorm(0, 1.0E-4)
   tau0 ~ dgamma(0.001, 0.001)
 })
 
@@ -220,10 +225,10 @@ logit_int <- nimbleMCMC(code = logit_int_code,
                         constants = model_constant_re,
                         inits = initial_int,
                         monitors = params_int,
-                        niter = 20000,
+                        niter = 50000,
                         nburnin = 5000,
                         nchains = 4,
-                        thin = 2,
+                        thin = 4,
                         samplesAsCodaMCMC = TRUE,
                         WAIC = TRUE)
 
@@ -238,41 +243,72 @@ gelman.plot(logit_int_mcmc)
 
 plot(logit_int_mcmc)
 summary(logit_int_mcmc)
-densplot(logit_int_mcmc)
+# densplot(logit_int_mcmc)
 
 
 
 
 
+#---------- Question 2: Random slope
+#===============================================================================
+
+# Initial value for random intercept
+initial_sl <- list(beta = rep(0, 12), tau0 = 1, tau1 = 1, 
+                   b0 = rep(0, 100), b1 = rep(0, 100))
+
+# specify MCMC details
+params_sl <- c("beta", "tau0", "tau1")
 
 
+# Nimble code for model
+
+logit_sl_code <- nimbleCode(
+  {
+    for (ic in 1:C) {
+      for (j in 1:nc[ic]) {
+        working[cumnc[ic]+ j] ~ dbern(p[cumnc[ic]+ j])
+        logit(p[cumnc[ic]+ j]) <- beta[1] + beta[2]*female[ic] + beta[3]*year[cumnc[ic]+ j] + 
+          beta[4]*age[cumnc[ic]+ j] + beta[5]*hsat[cumnc[ic]+ j] + 
+          beta[6]*handper[cumnc[ic]+ j] + beta[7]*hhninc[cumnc[ic]+ j] + 
+          beta[8]*hhkids[cumnc[ic]+ j] + beta[9]*educ[cumnc[ic]+ j] + 
+          beta[10]*married[cumnc[ic]+ j] + beta[11]*docvis[cumnc[ic]+ j] + 
+          beta[12]*hospvis[cumnc[ic]+ j] + b0[ic] + b1[ic]*year[cumnc[ic]+ j]
+      }
+      b0[ic] ~ dnorm(0, tau0)
+      b1[ic] ~ dnorm(0, tau1)
+    }
+    # Prior
+    for (i in 1:12){
+      beta[i]~ dnorm(0.0, 1.0E-6)
+    }
+    tau0 ~ dgamma(0.001, 0.001)
+    tau1 ~ dgamma(0.001, 0.001)
+  })
 
 
+logit_sl <- nimbleMCMC(code = logit_sl_code,
+                        data = model_data,
+                        constants = model_constant_re,
+                        inits = initial_sl,
+                        monitors = params_sl,
+                        niter = 50000,
+                        nburnin = 5000,
+                        nchains = 4,
+                        thin = 4,
+                        samplesAsCodaMCMC = TRUE,
+                        WAIC = TRUE)
 
+# Convert into mcmc.list 
 
+logit_sl_mcmc <- as.mcmc.list(logit_sl$samples)
 
+gelman.diag(logit_sl_mcmc)
+gelman.plot(logit_sl_mcmc)
 
+# Produce general summary of obtained MCMC sampling
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+plot(logit_sl_mcmc)
+summary(logit_sl_mcmc)
 
 
 
